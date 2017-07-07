@@ -2,42 +2,81 @@ var fs = require('fs');
 var url = require('url');
 var querystring = require('querystring');
 
-var args = process.argv.slice(2);
-
 var jsonsFolder = __dirname + '/jsons';
-var csvFile = __dirname + '/Recette_API_CodificationV1.0.csv';
+var paramFile = __dirname + '/testCodification_param.json';
 
-var csvString = fs.readFileSync(csvFile).toString();
-var csvRows = CSVToArray(csvString, ";");
+var params = JSON.parse(fs.readFileSync(paramFile).toString('utf8').replace(/^\uFEFF/, '')); // remove BOM from file data
 
-var startLine = Number(args[0]) || 2;
-var stopLine = Number(args[1]) ? Number(args[1]) + 1 : csvRows.length;
 
-for (var i = startLine; i < stopLine; i++) {
-  var numFile = csvRows[i][2];
-  if (fs.existsSync(jsonsFolder + '/Codification_resultat_' + numFile + '.json')) {
-    console.log("File Codification_resultat_" + numFile + ".json exist");
-    var parsedUrl = url.parse(csvRows[i][1]);
-    var parsedQuery = querystring.parse(parsedUrl.query);
-    var queryNames = Object.keys(parsedQuery);
-    for (var j = 0; j < queryNames.length; j++) {
-      if (queryNames[j].indexOf("filter") === 0) {
-        var needQueryName = queryNames[j].replace("filter", "");
-        doStuff(jsonsFolder + '/Codification_resultat_' + numFile + '.json', needQueryName + "=" + parsedQuery[queryNames[j]]);
-        break;
-      } else if (j === queryNames.length - 1) {
-        console.log("expression not contains 'filter'");
-      }
+var inCsvFile = __dirname + '/' + params.inFile;
+var outCsvFile = __dirname + '/' + params.outFile;
+var csvString = fs.readFileSync(inCsvFile).toString('utf8').replace(/^\uFEFF/, '');
+var csvRows = CSVToArray(csvString, params.inSeparator);
+
+var codeLineStart = Number(params.codeLineStart);
+var codeCount = Number(params.codeCount);
+var codeLineEnd = codeLineStart + codeCount;
+var codeColumn = Number(params.codeColumn) - 1;
+var expColumn = Number(params.expColumn) - 1;
+var trueColumn = Number(params.trueColumn) - 1;
+var falseColumn = Number(params.falseColumn) - 1;
+var expPattern = params.expPattern;
+
+
+for (var i = codeLineStart; i < codeLineEnd; i++) {
+  var numFile = csvRows[i][codeColumn];
+  var jsonFileName = params.targetFilePattern.replace("[CODE]", numFile);
+  if (fs.existsSync(jsonsFolder + '/' + jsonFileName)) {
+    console.log(jsonFileName + " exist");
+    var expRegEx = new RegExp(expPattern, 'g');
+    var matches = expRegEx.exec(csvRows[i][expColumn]);
+    if (matches && matches[1]) {
+      var doStuffResults = doStuff(jsonsFolder + '/' + jsonFileName, matches[1]);
+      csvRows[i][trueColumn] = doStuffResults.path;
+      csvRows[i][falseColumn] = doStuffResults.expression;
+    } else {
+      console.log("expression not contains " + expPattern);
     }
+
+
+    // TODO use pattern
+    // var parsedUrl = url.parse(csvRows[i][expColumn]);
+    // var parsedQuery = querystring.parse(parsedUrl.query);
+    // var queryNames = Object.keys(parsedQuery);
+    // for (var j = 0; j < queryNames.length; j++) { // need use expPattern!!!
+    //   if (queryNames[j].indexOf("filter") === 0) {
+    //     var needQueryName = queryNames[j].replace("filter", "");
+    //     var doStuffResults = doStuff(jsonsFolder + '/' + jsonFileName, needQueryName + "=" + parsedQuery[queryNames[j]]);
+    //     csvRows[i][trueColumn] = doStuffResults.path;
+    //     csvRows[i][falseColumn] = doStuffResults.expression;
+    //     break;
+    //   } else if (j === queryNames.length - 1) {
+    //     console.log("expression not contains 'filter'");
+    //   }
+    // }
+    // TODO use pattern
+
   } else {
-    console.log("File Codification_resultat_" + numFile + ".json does not exist");
+    console.log(jsonFileName + " does not exist");
   }
 }
 
 
+fs.writeFileSync(outCsvFile, buildCsv(csvRows, params.outSeparator));
 
 function doStuff(path, expression) {
-  console.log("doStuff(): path - " + path + ", expression - " + expression);
+  return {
+    path: path,
+    expression: expression
+  };
+}
+
+function buildCsv(array, separator) {
+  var lineArray = [];
+  for (var i = 0; i < array.length; i++) {
+    lineArray.push(array[i].join(separator));
+  }
+  return lineArray.join("\n");
 }
 
 function CSVToArray( strData, strDelimiter ) {
