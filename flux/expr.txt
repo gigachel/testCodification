@@ -1,0 +1,4 @@
+00003;[idMetier]=ega!MME
+00004;[idMetier]=neg!MME
+00005;[idMetier]=com!MME
+00006;[idMetier]=nco!MME
